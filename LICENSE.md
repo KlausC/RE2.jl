@@ -1,4 +1,4 @@
-The Regex2.jl package is licensed under the MIT "Expat" License:
+The RE2.jl package is licensed under the MIT "Expat" License:
 
 > Copyright (c) 2018: Klaus Crusius.
 >
