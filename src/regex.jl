@@ -3,9 +3,10 @@
 ## object-oriented RE2 interface via cre2 ##
 
 export @re2_str, Regex2, Regex2Match
-import Base: compile, contains, match, matchall, findfirst, findnext
+import Base: compile, contains, match, matchall, findfirst, findnext, eachmatch
 
-import Base: getindex, ==, show, print_quoted_literal
+import Base: getindex, ==, show, print_quoted_literal, ensureroom
+import Base: eltype, next, done, start, IteratorSize, SizeUnknown
 
 include("cre2.jl")
 
@@ -99,7 +100,7 @@ macro re2_str(pattern, flags...) Regex2(pattern, flags...) end
 
 function show(io::IO, re::Regex2)
     imsx = CASELESS|MULTILINE|DOTALL|LONGEST_MATCH|POSIX_SYNTAX
-    opts = CRE2.get_options(re.compile_options)
+    opts = get_compile_options(re)
     if (opts & ~imsx) == DEFAULT_COMPILER_OPTS
         print(io, "re2")
         print_quoted_literal(io, re.pattern)
@@ -232,12 +233,16 @@ end
 get_match_options(re::Regex2) = get_match_options(re.match_options)
 
 function substrind(str::Union{String,SubString{String}}, md::Vector{Ptr{Cvoid}}, i::Int)
-    ix1 = md[2i+1] + 1 - pointer(str)
+    ix1 = Int(md[2i+1] + 1 - pointer(str))
     ix1, prevind(str, ix1 + Int(md[2i+2]))
 end 
 
 function substr(str::Union{String,SubString{String}}, md::Vector{Ptr{Cvoid}}, i::Int)
-    SubString(str, substrind(str, md, i))
+    SubString(str, substrind(str, md, i)...)
+end
+
+function substrr(str::Union{String,SubString{String}}, md::Vector{Ptr{Cvoid}}, i::Int)
+    colon(substrind(str, md, i)...)
 end
 
 """
@@ -264,49 +269,35 @@ julia> matchall(rx, "a1a2a3a", overlap = true)
 ```
 """
 function matchall(re::Regex2, str::String; overlap::Bool = false)
-    regex1 = compile(re).regex
-    copts = CRE2.get_options(re.compile_options)
-    regex2 = if copts & CRE2.LONGEST_MATCH == 0
-                Regex2(re.pattern, copts | CRE2.LONGEST_MATCH, re.match_options)
-            else
-                regex1
-            end
-                
-    n = sizeof(str)
-    matches = SubString{String}[]
-    offset = UInt32(1)
+    regex = compile(re).regex
+    regex2 = regex
+    copts = get_compile_options(re)
+    longmatch = copts & LONGEST_MATCH != 0            
+    need2 = !longmatch
+    n = nextind(str, lastindex(str))
+    offset = Cuint(firstindex(str))
     opts = get_match_options(re)
-    opts_nonempty = get_match_options(CRE2.ANCHORED | re.match_options)
-    second_chance = false
-    while true
-        opts1, regex = if second_chance
-            opts_nonempty, compile(regex2).regex
-        else
-            opts, regex1
-        end
-        result = CRE2.exec(regex, str, offset-1, opts1, re.match_data, 1)
-        ix1, ix2 = result ? substrind(str, re.match_data, 0) : (0, -1)
-        if ix1 > ix2
-            if second_chance && offset <= n
-                offset = Cuint(nextind(str, offset))
-                second_chance = false
-                continue
-            else
-                if !second_chance ### ERROR TODO 
-                    break
+    opts2 = get_match_options(ANCHORED|re.match_options)
+    matches = SubString{String}[]
+
+    while offset <= n && CRE2.exec(regex, str, offset-1, opts, re.match_data, 1)
+        ix1, ix2 = substrind(str, re.match_data, 0)
+        push!(matches, SubString(str, ix1, ix2))
+
+        if ix1 > ix2 && !longmatch
+            if need2
+                regex2 = Regex2(re.pattern, copts|LONGEST_MATCH, re.match_options).regex
+                need2 = false
+            end
+            if CRE2.exec(regex2, str, offset-1, opts2, re.match_data, 1)
+                ix1, ix2 = substrind(str, re.match_data, 0)
+                if ix1 <= ix2
+                    push!(matches, SubString(str, ix1, ix2))
                 end
             end
         end
-
-        push!(matches, SubString(str, ix1, ix2))
-        second_chance = ix1 > ix2
-        if overlap
-            if !second_chance
-                offset = Cuint(nextind(str, ix1))
-            end
-        else
-            offset = Cuint(nextind(str, ix2))
-        end
+        offset == n && break
+        offset = Cuint(overlap ? nextind(str, ix1) : nextind(str, max(ix1, ix2)))
     end
     matches
 end
@@ -322,7 +313,7 @@ function findnext(re::Regex2, str::Union{String,SubString}, idx::Integer)
     opts = get_match_options(re.match_options)
     compile(re)
     md = re.match_data
-    CRE2.exec(re.regex, str, idx-1, opts, re.match_data) ? substrind(str, md, 0) : (0:-1)
+    CRE2.exec(re.regex, str, idx-1, opts, re.match_data) ? substrr(str, md, 0) : (0:-1)
 end
 findnext(r::Regex2, s::AbstractString, idx::Integer) = throw(ArgumentError(
     "regex search is only available for the String type; use String(s) to convert"
@@ -348,7 +339,7 @@ macro s_str(string) SubstitutionString(string) end
 
 replace_err(repl) = error("Bad replacement string: $repl")
 
-function _write_capture(io, re, group)
+function Base._write_capture(io, re::Regex2, group)
     len = CRE2.substring_length_bynumber(re.match_data, group)
     ensureroom(io, len+1)
     CRE2.substring_copy_bynumber(re.match_data, group,
@@ -357,7 +348,7 @@ function _write_capture(io, re, group)
     io.size = max(io.size, io.ptr - 1)
 end
 
-function _replace(io, repl_s::SubstitutionString, str, r, re)
+function Base._replace(io, repl_s::SubstitutionString, str, r, re::Regex2)
     SUB_CHAR = '\\'
     GROUP_CHAR = 'g'
     LBRACKET = '<'
@@ -416,13 +407,17 @@ function _replace(io, repl_s::SubstitutionString, str, r, re)
     end
 end
 
-struct Regex2MatchIterator
+get_compile_options(re::Regex2) = CRE2.get_options(re.compile_options)
+
+mutable struct Regex2MatchIterator
     regex::Regex2
     string::String
     overlap::Bool
+    regex2::Regex2
+    longmatch::Bool
 
     function Regex2MatchIterator(regex::Regex2, string::AbstractString, ovr::Bool=false)
-        new(regex, string, ovr)
+        new(regex, string, ovr, regex, get_compile_options(regex) & LONGEST_MATCH != 0)
     end
 end
 compile(itr::Regex2MatchIterator) = (compile(itr.regex); itr)
@@ -444,25 +439,28 @@ function next(itr::Regex2MatchIterator, prev_match)
     else
         offset = prev_match.offset + lastindex(prev_match.match)
     end
-
-    opts_nonempty = UInt32(CRE2.ANCHORED | CRE2)
-    while true
-        mat = match(itr.regex, itr.string, offset,
-                    prevempty ? opts_nonempty : UInt32(0))
-
-        if mat === nothing
-            if prevempty && offset <= sizeof(itr.string)
-                offset = nextind(itr.string, offset)
-                prevempty = false
-                continue
-            else
-                break
-            end
-        else
+   
+    regex = itr.regex
+    if !itr.longmatch && prevempty
+        if regex === itr.regex2
+            itr.regex2 = Regex2(regex.pattern, get_compile_options(regex)|LONGEST_MATCH, 0)
+        end
+        mat = match(itr.regex2, itr.string, offset, ANCHORED)
+        if mat !== nothing && !isempty(mat.match)
             return (prev_match, mat)
+        elseif offset > sizeof(itr.string)
+            return (prev_match, nothing)
         end
     end
-    (prev_match, nothing)
+
+    offset = nextind(itr.string, min(offset, lastindex(itr.string))) 
+    mat = match(regex, itr.string, offset, UInt32(0))
+    if mat != nothing && isempty(mat.match) &&
+        offset == prev_match.offset > lastindex(itr.string)
+
+        mat = nothing
+    end
+    return (prev_match, mat)
 end
 
 """
@@ -474,7 +472,7 @@ original string, otherwise they must be from distinct character ranges.
 
 # Examples
 ```jldoctest
-julia> rx = r"a.a"
+julia> rx = re2"a.a"
 r"a.a"
 
 julia> m = eachmatch(rx, "a1a2a3a")
