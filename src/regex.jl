@@ -54,6 +54,7 @@ mutable struct Regex2
     end
 end
 
+using Printf
 function Regex2(pattern::AbstractString, flags::AbstractString)
     options = DEFAULT_COMPILER_OPTS
     for f in flags
@@ -99,16 +100,20 @@ Regex2Match("angry,\\nBad world")
 macro re2_str(pattern, flags...) Regex2(pattern, flags...) end
 
 function show(io::IO, re::Regex2)
-    imsx = CASELESS|MULTILINE|DOTALL|LONGEST_MATCH|POSIX_SYNTAX
     opts = get_compile_options(re)
-    if (opts & ~imsx) == DEFAULT_COMPILER_OPTS
+    imsx = CASELESS|MULTILINE|DOTALL|LONGEST_MATCH|POSIX_SYNTAX|LOG_ERRORS
+    opts & POSIX_SYNTAX == 0 && ( imsx |= PERL_CLASSES|WORD_BOUNDARY )
+
+    if opts & ~imsx == 0
         print(io, "re2")
         print_quoted_literal(io, re.pattern)
-        if (opts & CASELESS ) != 0; print(io, 'i'); end
-        if (opts & DOTALL   ) != 0; print(io, 's'); end
-        if (opts & LONGEST_MATCH ) != 0; print(io, 'l'); end
-        if (opts & POSIX_SYNTAX ) != 0; print(io, 'p'); end
-        if (opts & MULTILINE) != 0; print(io, 'm'); end
+        if opts & CASELESS != 0; print(io, 'i'); end
+        if opts & DOTALL != 0; print(io, 's'); end
+        if opts & LONGEST_MATCH != 0; print(io, 'l'); end
+        if opts & POSIX_SYNTAX != 0; print(io, 'p'); end
+        if opts & POSIX_SYNTAX != 0
+            if (opts & MULTILINE) != 0; print(io, 'm'); end
+        end
     else
         print(io, "Regex2(")
         show(io, re.pattern)
