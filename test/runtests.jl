@@ -27,6 +27,7 @@ target = """71.163.72.113 - - [30/Jul/2014:16:40:55 -0700] "GET emptymind.org/th
 pat = re2"""([\d\.]+) ([\w.-]+) ([\w.-]+) (\[.+\]) "([^"\r\n]*|[^"\r\n\[]*\[.+\][^"]+|[^"\r\n]+.[^"]+)" (\d{3}) (\d+|-) ("(?:[^"]|\")+)"? ("(?:[^"]|\")+)"?"""
 rm = match(pat, target)
 @test length(rm.captures) == 9
+@test rm.offsets == [1, 15, 17, 19, 49, 133, 137, 144, 1454]
 
 # Issue 9545 (32 bit)
 buf = PipeBuffer()

@@ -221,7 +221,7 @@ function match(re::Regex2, str::Union{SubString{String}, String},
     cap = Union{Nothing,SubString{String}}[md[2i+1] == Ptr{UInt8}(0) ?
                                 nothing : substr(str, md, i) for i=1:n]
     
-    off = Int[ md[2i+1]+1 for i=1:n ]
+    off = Int[ substrind(str, md, i)[1] for i=1:n ]
     Regex2Match(mat, cap, ix1, off, re)
 end
 
