@@ -102,9 +102,16 @@ end
 
 # supported options for different use cases
 
-function info(regex::Ptr{Cvoid}) where T
+function error_code(regex::Ptr{Cvoid})
     regex == C_NULL && error("NULL regex object")
-    ret = ccall((:cre2_error_code, RE2LIB), Int32, (Ptr{Cvoid},), regex)
+    res = ccall((:cre2_error_code, RE2LIB), Cint, (Ptr{Cvoid},), regex)
+    Int(res)
+end
+
+function error_string(regex::Ptr{Cvoid})
+    regex == C_NULL && error("NULL regex object")
+    res = ccall((:cre2_error_string, RE2LIB), Cstring, (Ptr{Cvoid},), regex)
+    unsafe_string(res)
 end
 
 function get_ovec(match_data)
@@ -122,11 +129,12 @@ function compile(pattern::AbstractString, options::Options)
                    (Ptr{UInt8}, Csize_t, Ptr{Cvoid}),
                    pattern, sizeof(pattern), options.copt)
     if re_ptr == C_NULL
-        error("RE memory allocation error")
+        error("RE2 compilation error: memory allocation failed")
     end
-    errno = ccall((:cre2_error_code, RE2LIB), Cint, (Ptr{Cvoid},), re_ptr)
+    errno = error_code(re_ptr)
     if errno != NO_ERROR
-        error("RE2 compilation error $errno")
+        es = error_string(re_ptr)
+        error("RE2 compilation error $errno: $es")
     end
     re_ptr
 end

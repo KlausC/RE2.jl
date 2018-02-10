@@ -18,7 +18,7 @@ import .CRE2: ANCHORED, ENDANCHORED,
               LOG_ERRORS, LATIN1, LONGEST_MATCH, LITERAL, NEVER_NL, DOTALL, NEVER_CAPTURE,
               CASELESS, POSIX_SYNTAX, PERL_CLASSES, WORD_BOUNDARY, MULTILINE
 
-const DEFAULT_COMPILER_OPTS = LOG_ERRORS | PERL_CLASSES | WORD_BOUNDARY
+const DEFAULT_COMPILER_OPTS = PERL_CLASSES | WORD_BOUNDARY
 const DEFAULT_MATCH_OPTS = ANCHORED & ~ANCHORED
 
 mutable struct Regex2
@@ -30,8 +30,9 @@ mutable struct Regex2
 
     function Regex2(pattern::AbstractString, compile_options::Integer,
                    match_options::Integer)
+
         pattern = String(pattern)
-        compile_options = UInt32(compile_options)
+        compile_options = UInt32(compile_options & ~LOG_ERRORS) # silently ignore
         match_options = UInt32(match_options)
         if (compile_options & ~CRE2.COMPILE_MASK) != 0
             throw(ArgumentError("invalid regex compile options: $compile_options"))
@@ -69,12 +70,12 @@ function Regex2(pattern::AbstractString, flags::AbstractString)
 end
 Regex2(pattern::AbstractString) = Regex2(pattern, DEFAULT_COMPILER_OPTS, DEFAULT_MATCH_OPTS)
 
-function compile(regex::Regex2)
-    if regex.regex == C_NULL
-        regex.regex = CRE2.compile(regex.pattern, regex.compile_options)
-        regex.match_data = CRE2.create_match_data(regex.regex)
+function compile(re::Regex2)
+    if re.regex == C_NULL
+        re.regex = CRE2.compile(re.pattern, re.compile_options)
+        re.match_data = CRE2.create_match_data(re.regex)
     end
-    regex
+    re
 end
 
 """
