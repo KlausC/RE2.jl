@@ -46,11 +46,11 @@ let m = match(re2"(?P<a>.)(.)(?P<b>.)", "xyz")
     @test (m[:a], m[2], m["b"]) == ("x", "y", "z")
     @test sprint(show, m) == "Regex2Match(\"xyz\", a=\"x\", 2=\"y\", b=\"z\")"
 end
-#= TODO implement replace for Regex2 patterns (also with SubstitutionString)
+
 # Backcapture reference in substitution string
+@test replace("xaay", re2"x(a+)" => s"!\1!") == "!aa!y"
 @test replace("abcde", re2"(..)(?P<byname>d)" => s"\g<byname>xy\\\1") == "adxy\\bce"
 @test_throws ErrorException replace("a", re2"(?P<x>)" => s"\g<y>")
-=#
 
 # Proper unicode handling
 @test  match(re2"∀∀", "∀x∀∀∀").match == "∀∀"

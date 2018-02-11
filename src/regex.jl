@@ -6,7 +6,7 @@ export @re2_str, Regex2, Regex2Match
 import Base: compile, contains, match, matchall, findfirst, findnext, eachmatch
 
 import Base: getindex, ==, show, print_quoted_literal, ensureroom
-import Base: eltype, next, done, start, IteratorSize, SizeUnknown
+import Base: eltype, next, done, start, IteratorSize, SizeUnknown, SubstitutionString
 
 include("cre2.jl")
 
@@ -327,26 +327,9 @@ findnext(r::Regex2, s::AbstractString, idx::Integer) = throw(ArgumentError(
 ))
 findfirst(r::Regex2, s::AbstractString) = findnext(r,s,firstindex(s))
 
-struct SubstitutionString{T<:AbstractString} <: AbstractString
-    string::T
-end
-
-ncodeunits(s::SubstitutionString) = ncodeunits(s.string)
-codeunit(s::SubstitutionString) = codeunit(s.string)
-codeunit(s::SubstitutionString, i::Integer) = codeunit(s.string, i)
-isvalid(s::SubstitutionString, i::Integer) = isvalid(s.string, i)
-next(s::SubstitutionString, i::Integer) = next(s.string, i)
-
-function show(io::IO, s::SubstitutionString)
-    print(io, "s")
-    show(io, s.string)
-end
-
-macro s_str(string) SubstitutionString(string) end
-
 replace_err(repl) = error("Bad replacement string: $repl")
 
-function Base._write_capture(io, re::Regex2, group)
+function _write_capture(io, re::Regex2, group)
     len = CRE2.substring_length_bynumber(re.match_data, group)
     ensureroom(io, len+1)
     CRE2.substring_copy_bynumber(re.match_data, group,
@@ -399,7 +382,7 @@ function Base._replace(io, repl_s::SubstitutionString, str, r, re::Regex2)
                 if all(isdigit, groupname)
                     _write_capture(io, re, parse(Int, groupname))
                 else
-                    group = CRE2.substring_number_from_name(re.regex, groupname)
+                    group = CRE2.group_number_from_name(re.regex, groupname)
                     group < 0 && replace_err("Group $groupname not found in regex $re")
                     _write_capture(io, re, group)
                 end

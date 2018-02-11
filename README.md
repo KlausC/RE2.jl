@@ -9,26 +9,25 @@ Wrapper to the RE2 regular expression implementation.
 
 Special feature (compared to PCRE), the "l" compilation flag for "longest match".
 
-See [RE2](https://github.com/google/re2).
+See [RE2](https://github.com/google/re2). Using the C-interface
+[CRE2](https://github.com/marcomaggi/cre2)
 
-Using the C-interface [CRE2](https://github.com/marcomaggi/cre2)
-
-## Installtion:
+### Installtion:
 
 Requires the libraries libcre2 and libre2 installed in the standard library path.
 
-## Usage
+### Usage
 
 ```
 julia> using RE2
 
-julia> re = re2"a*|b*"l
-re2"a*|b*"l
+julia> re = re2"x*|y*"l
+re2"x*|y*"l
 
-julia> match(re, "bbybba")
-Regex2Match("bb")
+julia> match(re, "yyayyx")
+Regex2Match("yy")
 
-julia> match(r"a*|b*", "bbybba")
+julia> match(r"x*|y*", "yyayyx")
 RegexMatch("")
 ```
 
