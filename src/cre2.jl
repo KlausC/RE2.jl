@@ -13,24 +13,19 @@ function __init__()
     push!(DL_LOAD_PATH, "/usr/local/lib")
 end
 
-mutable struct Options
-    copt::Ptr{Nothing}
-    function Options(options::UInt32, mem::Integer=DEFAULT_MAX_MEM)
-        opt = new(ccall((:cre2_opt_new, RE2LIB), Ptr{Nothing}, ()))
-        set_options(opt, options, mem)
+function new_options(options::UInt32, mem::Integer=DEFAULT_MAX_MEM)
+    copt = ccall((:cre2_opt_new, RE2LIB), Ptr{Cvoid}, ())
+    set_options(copt, options, mem)
+    copt
+end
 
-        finalizer(opt) do opt 
-            if opt.copt != Ptr{Nothing}(0)
-                ccall((:cre2_opt_delete, RE2LIB), Cvoid, (Ptr{Nothing},), opt.copt)
-                opt.copt = C_NULL
-            end
-        end
-        opt
+function free_options(copt::Ptr{Cvoid})
+    if copt != Ptr{Cvoid}(0)
+        ccall((:cre2_opt_delete, RE2LIB), Cvoid, (Ptr{Cvoid},), copt)
     end
 end
 
-function set_options(opt::Options, options::UInt32, mem)
-    copt = opt.copt
+function set_options(copt::Ptr{Cvoid}, options::UInt32, mem)
     vencoding = options & LATIN1 != 0 ? Latin1 : UTF8
     vlongest = options & LONGEST_MATCH == 0 ? 0 : 1
     vlogerrors = options & LOG_ERRORS == 0 ? 0 : 1
@@ -58,11 +53,10 @@ function set_options(opt::Options, options::UInt32, mem)
     ccall((:cre2_opt_one_line, RE2LIB), Cvoid, (Ptr{Nothing}, Cint), copt, voneline)
 
     ccall((:cre2_opt_set_max_mem, RE2LIB), Cvoid, (Ptr{Nothing}, Cint), copt, mem)
-    opt
+    copt
 end
 
-function get_options(opt::Options)
-    copt = opt.copt
+function get_options(copt::Ptr{Cvoid})
     vencoding = ccall((:cre2_opt_encoding, RE2LIB), Cuint, (Ptr{Nothing},), copt)
     vlongest = ccall((:cre2_opt_longest_match, RE2LIB), Cuint, (Ptr{Nothing},), copt)
     vlogerrors = ccall((:cre2_opt_log_errors, RE2LIB), Cuint, (Ptr{Nothing},), copt)
@@ -92,7 +86,7 @@ function get_options(opt::Options)
     op
 end
 
-function get_maxmem(opt::Options)
+function get_maxmem(copt::Ptr{Cvoid})
     ccall((:cre2_opt_max_mem, RE2LIB), Cuint, (Ptr{Cvoid},), copt)
 end
 
@@ -122,12 +116,12 @@ function get_ovec(match_data)
     unsafe_wrap(Array, ptr, 2n, own = false)
 end
 
-function compile(pattern::AbstractString, options::Options)
+function compile(pattern::AbstractString, options::Ptr{Cvoid})
     errno = Ref{Cint}(0)
     erroff = Ref{Csize_t}(0)
     re_ptr = ccall((:cre2_new, RE2LIB), Ptr{Cvoid},
                    (Ptr{UInt8}, Csize_t, Ptr{Cvoid}),
-                   pattern, sizeof(pattern), options.copt)
+                   pattern, sizeof(pattern), options)
     if re_ptr == C_NULL
         error("RE2 compilation error: memory allocation failed")
     end
@@ -139,27 +133,7 @@ function compile(pattern::AbstractString, options::Options)
     re_ptr
 end
 
-free_re(re) =
-    ccall((:cre2_delete, RE2LIB), Cvoid, (Ptr{Cvoid},), re)
-
-function err_message(errno)
-    get(Dict(NO_ERROR => "Successful",
-                ERROR_INTERNAL => "Unexpected error",
-                ERROR_BAD_ESCAPE => "Bad escape sequence",
-                ERROR_BAD_CHAR_CLASS => "Bad character class",
-                ERROR_BAD_CHAR_RANGE => "Bad character class range",
-                ERROR_MISSING_BRACKET => "Missing closing ']'",
-                ERROR_MISSING_PAREN => "Missing closing ')'",
-                ERROR_TRAILING_BACKSLASH => "Trailing '\\' at end of regexp",
-                ERROR_REPEAT_ARGUMENT => "Repeat argument missing, e.g. '*'",
-                ERROR_REPEAT_SIZE => "Bad repetition argument",
-                ERROR_REPEAT_OP => "Bad repetition operator",
-                ERROR_BAD_PERL_OP => "Bad Perl operator",
-                ERROR_BAD_UTF8 => "Invalid UTF-8 in regexp",
-                ERROR_BAD_NAMED_CAPTURE => "Bad named capture group",
-                ERROR_PATTERN_TOO_LARGE => "Pattern too large (compile failed)"),
-       errno, "Unknown error code")
-end
+free_re(re) = ccall((:cre2_delete, RE2LIB), Cvoid, (Ptr{Cvoid},), re)
 
 function exec(re, text, offset, options, match_data, nmatch_data::Integer=-1)
     text_length::Cint = sizeof(text)

@@ -23,7 +23,7 @@ const DEFAULT_MATCH_OPTS = ANCHORED & ~ANCHORED
 
 mutable struct Regex2
     pattern::String
-    compile_options::CRE2.Options
+    compile_options::UInt32
     match_options::UInt32
     regex::Ptr{Cvoid}
     match_data::Vector{Ptr{Cvoid}}
@@ -44,8 +44,7 @@ mutable struct Regex2
             compile_options |= (PERL_CLASSES|WORD_BOUNDARY)
             compile_options &= ~MULTILINE
         end
-        opt = CRE2.Options(compile_options)
-        re = new(pattern, opt, match_options, C_NULL, Ptr{Cvoid}[])
+        re = new(pattern, compile_options, match_options, C_NULL, Ptr{Cvoid}[])
         compile(re)
 
         finalizer(re) do re
@@ -72,8 +71,10 @@ Regex2(pattern::AbstractString) = Regex2(pattern, DEFAULT_COMPILER_OPTS, DEFAULT
 
 function compile(re::Regex2)
     if re.regex == C_NULL
-        re.regex = CRE2.compile(re.pattern, re.compile_options)
+        copts = CRE2.new_options(re.compile_options)
+        re.regex = CRE2.compile(re.pattern, copts)
         re.match_data = CRE2.create_match_data(re.regex)
+        CRE2.free_options(copts)
     end
     re
 end
@@ -101,7 +102,7 @@ Regex2Match("angry,\\nBad world")
 macro re2_str(pattern, flags...) Regex2(pattern, flags...) end
 
 function show(io::IO, re::Regex2)
-    opts = get_compile_options(re)
+    opts = re.compile_options
     imsx = CASELESS|MULTILINE|DOTALL|LONGEST_MATCH|POSIX_SYNTAX|LOG_ERRORS
     opts & POSIX_SYNTAX == 0 && ( imsx |= PERL_CLASSES|WORD_BOUNDARY )
 
@@ -277,7 +278,7 @@ julia> matchall(rx, "a1a2a3a", overlap = true)
 function matchall(re::Regex2, str::String; overlap::Bool = false)
     regex = compile(re).regex
     regex2 = regex
-    copts = get_compile_options(re)
+    copts = re.compile_options
     longmatch = copts & LONGEST_MATCH != 0            
     need2 = !longmatch
     n = nextind(str, lastindex(str))
@@ -413,8 +414,6 @@ function Base._replace(io, repl_s::SubstitutionString, str, r, re::Regex2)
     end
 end
 
-get_compile_options(re::Regex2) = CRE2.get_options(re.compile_options)
-
 mutable struct Regex2MatchIterator
     regex::Regex2
     string::String
@@ -423,7 +422,7 @@ mutable struct Regex2MatchIterator
     longmatch::Bool
 
     function Regex2MatchIterator(regex::Regex2, string::AbstractString, ovr::Bool=false)
-        new(regex, string, ovr, regex, get_compile_options(regex) & LONGEST_MATCH != 0)
+        new(regex, string, ovr, regex, regex.compile_options & LONGEST_MATCH != 0)
     end
 end
 compile(itr::Regex2MatchIterator) = (compile(itr.regex); itr)
@@ -449,7 +448,7 @@ function next(itr::Regex2MatchIterator, prev_match)
     regex = itr.regex
     if !itr.longmatch && prevempty
         if regex === itr.regex2
-            itr.regex2 = Regex2(regex.pattern, get_compile_options(regex)|LONGEST_MATCH, 0)
+            itr.regex2 = Regex2(regex.pattern, regex.compile_options|LONGEST_MATCH, 0)
         end
         mat = match(itr.regex2, itr.string, offset, ANCHORED)
         if mat !== nothing && !isempty(mat.match)
