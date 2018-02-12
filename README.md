@@ -21,8 +21,8 @@ Requires the libraries libcre2 and libre2 installed in the standard library path
 ```
 julia> using RE2
 
-julia> re = re2"x*|y*"l
-re2"x*|y*"l
+julia> re = rr"x*|y*"l
+rr"x*|y*"l
 
 julia> match(re, "yyayyx")
 Regex2Match("yy")

@@ -2,7 +2,7 @@
 
 ## object-oriented RE2 interface via cre2 ##
 
-export @re2_str, Regex2, Regex2Match
+export @rr_str, Regex2, Regex2Match
 import Base: compile, contains, match, matchall, findfirst, findnext, eachmatch
 
 import Base: getindex, ==, show, print_quoted_literal, ensureroom
@@ -80,9 +80,9 @@ function compile(re::Regex2)
 end
 
 """
-    @re2_str -> Regex2
+    @rr_str -> Regex2
 
-Construct a regex, such as `re2"^[a-z]*\$"`. The regex also accepts one or more flags,
+Construct a regex, such as `rr"^[a-z]*\$"`. The regex also accepts one or more flags,
 listed after the ending quote, to change its behaviour:
 
 - `i` enables case-insensitive matching
@@ -95,11 +95,11 @@ listed after the ending quote, to change its behaviour:
 For example, this regex has all three flags enabled:
 
 ```jldoctest
-julia> match(re2"a+.*b+.*?d\$"ism, "Goodbye,\\nOh, angry,\\nBad world\\n")
+julia> match(rr"a+.*b+.*?d\$"ism, "Goodbye,\\nOh, angry,\\nBad world\\n")
 Regex2Match("angry,\\nBad world")
 ```
 """
-macro re2_str(pattern, flags...) Regex2(pattern, flags...) end
+macro rr_str(pattern, flags...) Regex2(pattern, flags...) end
 
 function show(io::IO, re::Regex2)
     opts = re.compile_options
@@ -107,7 +107,7 @@ function show(io::IO, re::Regex2)
     opts & POSIX_SYNTAX == 0 && ( imsx |= PERL_CLASSES|WORD_BOUNDARY )
 
     if opts & ~imsx == 0
-        print(io, "re2")
+        print(io, "rr")
         print_quoted_literal(io, re.pattern)
         if opts & CASELESS != 0; print(io, 'i'); end
         if opts & DOTALL != 0; print(io, 's'); end
@@ -189,7 +189,7 @@ allone is not supported.
 
 # Examples
 ```jldoctest
-julia> rx = re2"a(.)a"
+julia> rx = rr"a(.)a"
 r"a(.)a"
 
 julia> m = match(rx, "cabac")
@@ -460,7 +460,7 @@ original string, otherwise they must be from distinct character ranges.
 
 # Examples
 ```jldoctest
-julia> rx = re2"a.a"
+julia> rx = rr"a.a"
 r"a.a"
 
 julia> m = eachmatch(rx, "a1a2a3a")
